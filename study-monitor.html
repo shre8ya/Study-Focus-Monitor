@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Study Focus Monitor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f0f0f;
+      color: #e8e8e8;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 560px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 1.5rem;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #444;
+      flex-shrink: 0;
+    }
+    .dot.active  { background: #1D9E75; animation: pulse 1.5s infinite; }
+    .dot.alarm   { background: #E24B4A; animation: flash 0.4s infinite; }
+
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+    @keyframes flash  { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    h1 { font-size: 18px; font-weight: 500; letter-spacing: -0.2px; }
+
+    /* Video */
+    .video-wrap {
+      position: relative;
+      background: #1a1a1a;
+      border-radius: 12px;
+      overflow: hidden;
+      aspect-ratio: 4/3;
+      border: 1px solid #2a2a2a;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transform: scaleX(-1); /* mirror */
+    }
+
+    canvas#overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      transform: scaleX(-1);
+    }
+
+    .cam-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: #555;
+      font-size: 14px;
+    }
+
+    .cam-placeholder svg { opacity: 0.4; }
+
+    /* Status bar */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 12px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .badge {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 20px;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+    }
+    .badge.idle       { background: #222; color: #666; }
+    .badge.studying   { background: #0b3327; color: #4ECDA0; }
+    .badge.distracted { background: #2e1a0e; color: #E8885A; }
+    .badge.alarm      { background: #2e0e0e; color: #F07070; animation: flash 0.4s infinite; }
+
+    .timer { font-size: 13px; color: #555; }
+
+    /* Stats */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .stat {
+      background: #161616;
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .stat .label { font-size: 11px; color: #555; margin-bottom: 4px; }
+    .stat .val   { font-size: 20px; font-weight: 500; color: #e8e8e8; }
+
+    /* Alarm banner */
+    .alarm-banner {
+      display: none;
+      margin-top: 12px;
+      padding: 12px 16px;
+      background: #1e0707;
+      border: 1px solid #5a1515;
+      border-radius: 10px;
+    }
+    .alarm-banner.show { display: block; }
+    .alarm-banner p     { font-size: 14px; font-weight: 600; color: #F07070; margin-bottom: 2px; }
+    .alarm-banner small { font-size: 12px; color: #994444; }
+
+    /* Buttons */
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 18px;
+      border-radius: 8px;
+      border: 1px solid #333;
+      background: transparent;
+      color: #ccc;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    button:hover  { background: #1e1e1e; }
+    button:active { transform: scale(0.97); }
+
+    button.primary {
+      background: #e8e8e8;
+      color: #0f0f0f;
+      border-color: transparent;
+    }
+    button.primary:hover { background: #fff; }
+
+    button.danger {
+      border-color: #5a1515;
+      color: #F07070;
+    }
+    button.danger:hover { background: #1e0707; }
+
+    /* Error */
+    #error-msg {
+      display: none;
+      color: #F07070;
+      font-size: 13px;
+      margin-top: 10px;
+      background: #1e0707;
+      border: 1px solid #5a1515;
+      border-radius: 8px;
+      padding: 10px 14px;
+    }
+
+    /* Info */
+    .info {
+      font-size: 12px;
+      color: #444;
+      margin-top: 14px;
+      line-height: 1.7;
+    }
+
+    /* Settings */
+    .settings {
+      margin-top: 14px;
+      background: #161616;
+      border: 1px solid #222;
+      border-radius: 10px;
+      padding: 12px 16px;
+    }
+
+    .settings summary {
+      font-size: 13px;
+      color: #666;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .settings-inner {
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .setting-row label { font-size: 13px; color: #888; }
+
+    .setting-row input[type=range] {
+      flex: 1;
+      accent-color: #1D9E75;
+    }
+
+    .setting-row span { font-size: 13px; color: #ccc; min-width: 36px; text-align: right; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="header">
+    <div class="dot" id="status-dot"></div>
+    <h1>Study Focus Monitor</h1>
+  </div>
+
+  <div class="video-wrap">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="overlay"></canvas>
+    <div class="cam-placeholder" id="placeholder">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M15 10l4.553-2.276A1 1 0 0121 8.723v6.554a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+      </svg>
+      <span>Camera preview</span>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span class="badge idle" id="status-badge">Idle</span>
+    <span class="timer" id="timer-label">–</span>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat"><div class="label">Focus time</div><div class="val" id="focus-time">0:00</div></div>
+    <div class="stat"><div class="label">Distractions</div><div class="val" id="distraction-count">0</div></div>
+    <div class="stat"><div class="label">Alarms fired</div><div class="val" id="alarm-count">0</div></div>
+  </div>
+
+  <div class="alarm-banner" id="alarm-banner">
+    <p>⚠ Distraction / phone detected!</p>
+    <small>Return your face to the camera to stop the alarm.</small>
+  </div>
+
+  <div id="error-msg"></div>
+
+  <div class="btn-row">
+    <button class="primary" id="start-btn" onclick="startMonitor()">Start monitoring</button>
+    <button id="stop-btn" onclick="stopMonitor()" style="display:none">Stop</button>
+    <button class="danger" id="dismiss-btn" onclick="dismissAlarm()" style="display:none">Dismiss alarm</button>
+  </div>
+
+  <details class="settings">
+    <summary>Settings</summary>
+    <div class="settings-inner">
+      <div class="setting-row">
+        <label>Away threshold</label>
+        <input type="range" id="threshold-slider" min="1" max="10" step="1" value="3"
+               oninput="awayThreshold = +this.value * 1000; document.getElementById('threshold-val').textContent = this.value + 's'" />
+        <span id="threshold-val">3s</span>
+      </div>
+    </div>
+  </details>
+
+  <p class="info">
+    Uses your webcam + face detection (MediaPipe). No video is stored or sent anywhere — all processing is local.<br>
+    The alarm fires when your face is absent for longer than the threshold.
+  </p>
+
+</div>
+
+<!-- MediaPipe Face Detection -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
+
+<script>
+  // ─── State ────────────────────────────────────────────────────────────────
+  let stream        = null;
+  let animFrame     = null;
+  let faceDetection = null;
+  let monitoring    = false;
+  let alarmActive   = false;
+
+  let awayStart      = null;
+  let awayThreshold  = 3000; // ms
+  let focusSeconds   = 0;
+  let distractions   = 0;
+  let alarms         = 0;
+  let sessionStart   = null;
+  let tickInterval   = null;
+
+  // Audio context (created on first user gesture)
+  let audioCtx = null;
+
+  // ─── DOM ──────────────────────────────────────────────────────────────────
+  const video         = document.getElementById('video');
+  const overlay       = document.getElementById('overlay');
+  const ctx           = overlay.getContext('2d');
+  const statusDot     = document.getElementById('status-dot');
+  const statusBadge   = document.getElementById('status-badge');
+  const timerLabel    = document.getElementById('timer-label');
+  const alarmBanner   = document.getElementById('alarm-banner');
+  const startBtn      = document.getElementById('start-btn');
+  const stopBtn       = document.getElementById('stop-btn');
+  const dismissBtn    = document.getElementById('dismiss-btn');
+  const focusTimeEl   = document.getElementById('focus-time');
+  const distractionEl = document.getElementById('distraction-count');
+  const alarmCountEl  = document.getElementById('alarm-count');
+  const errorMsg      = document.getElementById('error-msg');
+  const placeholder   = document.getElementById('placeholder');
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+  function fmt(s) {
+    const m   = Math.floor(s / 60);
+    const sec = s % 60;
+    return m + ':' + String(sec).padStart(2, '0');
+  }
+
+  function setStatus(state) {
+    const labels = {
+      studying:   'Studying',
+      distracted: 'Look-away detected',
+      alarm:      'ALARM — return to desk!',
+      idle:       'Idle'
+    };
+    statusBadge.className   = 'badge ' + state;
+    statusBadge.textContent = labels[state] || state;
+    statusDot.className     = 'dot ' + (state === 'studying' ? 'active' : state === 'alarm' ? 'alarm' : '');
+  }
+
+  // ─── Alarm audio ──────────────────────────────────────────────────────────
+  function ensureAudioCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  function beepOnce(freq, duration) {
+    ensureAudioCtx();
+    const osc  = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type            = 'square';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime + duration);
+  }
+
+  function alarmLoop() {
+    if (!alarmActive) return;
+    beepOnce(880, 0.35);
+    setTimeout(() => { beepOnce(660, 0.25); }, 400);
+    setTimeout(alarmLoop, 900);
+  }
+
+  // ─── Alarm ────────────────────────────────────────────────────────────────
+  function triggerAlarm() {
+    if (alarmActive) return;
+    alarmActive = true;
+    alarms++;
+    alarmCountEl.textContent = alarms;
+    setStatus('alarm');
+    alarmBanner.classList.add('show');
+    dismissBtn.style.display = '';
+    alarmLoop();
+  }
+
+  function dismissAlarm() {
+    alarmActive = false;
+    alarmBanner.classList.remove('show');
+    dismissBtn.style.display = 'none';
+    awayStart = null;
+    if (monitoring) setStatus('studying');
+  }
+
+  // ─── Start / Stop ─────────────────────────────────────────────────────────
+  async function startMonitor() {
+    errorMsg.style.display = 'none';
+    ensureAudioCtx(); // unlock audio on gesture
+
+    try {
+      stream          = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+      video.srcObject = stream;
+      placeholder.style.display = 'none';
+      await new Promise(r => { video.onloadedmetadata = r; });
+      overlay.width  = video.videoWidth;
+      overlay.height = video.videoHeight;
+    } catch (e) {
+      showError('Camera access denied. Please allow camera permission and reload.');
+      return;
+    }
+
+    monitoring    = true;
+    sessionStart  = Date.now();
+    focusSeconds  = 0;
+    distractions  = 0;
+    alarms        = 0;
+    distractionEl.textContent = 0;
+    alarmCountEl.textContent  = 0;
+    focusTimeEl.textContent   = '0:00';
+
+    startBtn.style.display = 'none';
+    stopBtn.style.display  = '';
+    setStatus('studying');
+
+    tickInterval = setInterval(() => {
+      if (!alarmActive) focusSeconds++;
+      focusTimeEl.textContent = fmt(focusSeconds);
+      const elapsed = Math.round((Date.now() - sessionStart) / 1000);
+      timerLabel.textContent  = 'Session: ' + fmt(elapsed);
+    }, 1000);
+
+    runDetection();
+  }
+
+  function stopMonitor() {
+    monitoring  = false;
+    alarmActive = false;
+    if (animFrame) cancelAnimationFrame(animFrame);
+    if (stream)   stream.getTracks().forEach(t => t.stop());
+    clearInterval(tickInterval);
+    setStatus('idle');
+    startBtn.style.display = '';
+    stopBtn.style.display  = 'none';
+    dismissBtn.style.display = 'none';
+    alarmBanner.classList.remove('show');
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    statusDot.className = 'dot';
+    timerLabel.textContent = '–';
+    placeholder.style.display = '';
+  }
+
+  function showError(msg) {
+    errorMsg.textContent    = msg;
+    errorMsg.style.display  = 'block';
+  }
+
+  // ─── Face Detection (MediaPipe) ───────────────────────────────────────────
+  function runDetection() {
+    if (typeof FaceDetection === 'undefined') {
+      console.warn('MediaPipe not loaded — falling back to motion detection.');
+      fallbackMotionDetect();
+      return;
+    }
+
+    if (!faceDetection) {
+      faceDetection = new FaceDetection({
+        locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${f}`
+      });
+      faceDetection.setOptions({ model: 'short', minDetectionConfidence: 0.5 });
+      faceDetection.onResults(onFaceResults);
+      faceDetection.initialize().then(detectFrame).catch(err => {
+        console.warn('FaceDetection init failed:', err);
+        fallbackMotionDetect();
+      });
+    } else {
+      detectFrame();
+    }
+  }
+
+  function detectFrame() {
+    if (!monitoring) return;
+    faceDetection.send({ image: video })
+      .then(() => { animFrame = requestAnimationFrame(detectFrame); })
+      .catch(() => { animFrame = requestAnimationFrame(detectFrame); });
+  }
+
+  function onFaceResults(results) {
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    const faces       = results.detections || [];
+    const facePresent = faces.length > 0;
+
+    faces.forEach(det => {
+      const bb = det.boundingBox;
+      const x  = bb.xCenter * overlay.width  - (bb.width  * overlay.width)  / 2;
+      const y  = bb.yCenter * overlay.height - (bb.height * overlay.height) / 2;
+      const w  = bb.width  * overlay.width;
+      const h  = bb.height * overlay.height;
+
+      ctx.strokeStyle = alarmActive ? '#E24B4A' : '#1D9E75';
+      ctx.lineWidth   = 2;
+      ctx.strokeRect(x, y, w, h);
+
+      // Corner accents
+      const cs = 14;
+      ctx.strokeStyle = alarmActive ? '#F07070' : '#4ECDA0';
+      ctx.lineWidth   = 3;
+      [[x,y],[x+w,y],[x,y+h],[x+w,y+h]].forEach(([px,py], i) => {
+        ctx.beginPath();
+        ctx.moveTo(px + (i%2===0?cs:-cs), py);
+        ctx.lineTo(px, py);
+        ctx.lineTo(px, py + (i<2?cs:-cs));
+        ctx.stroke();
+      });
+    });
+
+    handlePresence(facePresent);
+  }
+
+  // ─── Fallback: Motion Detection ───────────────────────────────────────────
+  let prevFrame   = null;
+  let motionCanvas = null;
+  let motionCtx2  = null;
+
+  function fallbackMotionDetect() {
+    if (!motionCanvas) {
+      motionCanvas      = document.createElement('canvas');
+      motionCanvas.width  = 64;
+      motionCanvas.height = 48;
+      motionCtx2        = motionCanvas.getContext('2d');
+    }
+
+    function detect() {
+      if (!monitoring) return;
+      motionCtx2.drawImage(video, 0, 0, 64, 48);
+      const frame = motionCtx2.getImageData(0, 0, 64, 48).data;
+      let diff    = 0;
+      if (prevFrame) {
+        for (let i = 0; i < frame.length; i += 4) {
+          diff += Math.abs(frame[i] - prevFrame[i]);
+        }
+        diff /= frame.length / 4;
+      }
+      prevFrame = new Uint8ClampedArray(frame);
+      handlePresence(diff > 8);
+      animFrame = requestAnimationFrame(detect);
+    }
+    detect();
+  }
+
+  // ─── Presence Logic ───────────────────────────────────────────────────────
+  function handlePresence(present) {
+    if (!monitoring) return;
+
+    if (present) {
+      if (alarmActive) {
+        dismissAlarm();
+      } else {
+        awayStart = null;
+        setStatus('studying');
+      }
+    } else {
+      if (!awayStart) {
+        awayStart = Date.now();
+        distractions++;
+        distractionEl.textContent = distractions;
+        if (!alarmActive) setStatus('distracted');
+      } else if (Date.now() - awayStart > awayThreshold && !alarmActive) {
+        triggerAlarm();
+      }
+    }
+  }
+</script>
+
+</body>
+</html>
