@@ -16,10 +16,6 @@
 
 ## 📸 Preview
 
-<p align="center">
-  <img src="https://via.placeholder.com/700x400?text=App+Preview" alt="Preview"/>
-</p>
-
 ![alt text](image.png)
 
 ![alt text](image-1.png)
